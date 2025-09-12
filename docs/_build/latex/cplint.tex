@@ -63,7 +63,7 @@
 
 
 \title{cplint Documentation}
-\date{May 12, 2025}
+\date{Sep 12, 2025}
 \release{4.5}
 \author{Riguzzi Fabrizio, Azzolini Damiano}
 \newcommand{\sphinxlogo}{\vbox{}}
@@ -1063,7 +1063,7 @@ The first write the BDD to a file, the latter returns it as a string.
 The BDD is represented in the dot format of graphviz.
 Solid edges indicate 1\sphinxhyphen{}children, dashed edges indicate 0\sphinxhyphen{}children and dotted edges indicate 0\sphinxhyphen{}children
 with negation applied to the sub BDD.
-Each level of the BDD is associated to a variable of the form XI\_J indicated on the left: I indicates the multivalued variable index and J the index of the Boolean variable of rule I.
+Each level of the BDD is associated to a variable of the form XI\_J indicated on the left: I indicates the multivalued variable index and J the index of the Boolean variable of multivalued variable I.
 The hexadecimal number in each node is part of its address in memory and is not significant.
 The table \sphinxcode{\sphinxupquote{Var}} contains the associations between the rule groundings and the multivalued variables: the first column contains contains the multivalued variable index, the second column contains the rule index, corresponding to its position in the program, and the last column contains the list of constants grounding the rule, each replacing a variable in the order of appearance in the rule.
 

@@ -631,7 +631,7 @@ of <code class="code docutils literal notranslate"><span class="pre">T</span></c
 The BDD is represented in the dot format of graphviz.
 Solid edges indicate 1-children, dashed edges indicate 0-children and dotted edges indicate 0-children
 with negation applied to the sub BDD.
-Each level of the BDD is associated to a variable of the form XI_J indicated on the left: I indicates the multivalued variable index and J the index of the Boolean variable of rule I.
+Each level of the BDD is associated to a variable of the form XI_J indicated on the left: I indicates the multivalued variable index and J the index of the Boolean variable of multivalued variable I.
 The hexadecimal number in each node is part of its address in memory and is not significant.
 The table <code class="code docutils literal notranslate"><span class="pre">Var</span></code> contains the associations between the rule groundings and the multivalued variables: the first column contains contains the multivalued variable index, the second column contains the rule index, corresponding to its position in the program, and the last column contains the list of constants grounding the rule, each replacing a variable in the order of appearance in the rule.</p>
 <p>The BDD can be drawn in <code class="code docutils literal notranslate"><span class="pre">cplint</span></code> on SWISH by using the <code class="code docutils literal notranslate"><span class="pre">graphviz</span></code> renderer by including</p>
@@ -2039,7 +2039,7 @@ POSSIBILITY OF SUCH DAMAGE.</p>
     </div>
     <div class="footer" role="contentinfo">
     &#169; Copyright 2019, Riguzzi Fabrizio, Azzolini Damiano.
-      Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 8.2.3.
+      Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 8.3.0.
     </div>
   </body>
 </html>

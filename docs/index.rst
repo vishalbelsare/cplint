@@ -642,7 +642,7 @@ The first write the BDD to a file, the latter returns it as a string.
 The BDD is represented in the dot format of graphviz. 
 Solid edges indicate 1-children, dashed edges indicate 0-children and dotted edges indicate 0-children 
 with negation applied to the sub BDD. 
-Each level of the BDD is associated to a variable of the form XI_J indicated on the left: I indicates the multivalued variable index and J the index of the Boolean variable of rule I. 
+Each level of the BDD is associated to a variable of the form XI_J indicated on the left: I indicates the multivalued variable index and J the index of the Boolean variable of multivalued variable I. 
 The hexadecimal number in each node is part of its address in memory and is not significant. 
 The table :code:`Var` contains the associations between the rule groundings and the multivalued variables: the first column contains contains the multivalued variable index, the second column contains the rule index, corresponding to its position in the program, and the last column contains the list of constants grounding the rule, each replacing a variable in the order of appearance in the rule.
 
