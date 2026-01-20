@@ -1742,7 +1742,7 @@ pita_expansion((Head :- Body), Clauses) :-
   ((Head:-Body) \= ((pita_expansion(_,_) ):- _ )),
   list2or(HeadListOr, Head),
   process_head(HeadListOr, HeadList),
-  HeadList=[_H:_],!,
+  HeadList=[_H:P|_],P =:= 1.0,!,
   list2and(BodyList, Body),
   process_body(BodyList,BDD,BDDAnd,[],_Vars,BodyList2,Env,M),
   append([onec(Env,BDD)],BodyList2,BodyList3),
