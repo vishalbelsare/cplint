@@ -74,19 +74,19 @@ test(garage6):-
 :- begin_tests(dt_winning, []).
 :- ensure_loaded(library(examples/dt_winning)).
 test(best_st_wnning):-
-  run((dt_solve(Strategy,ExpValue),close_to(ExpValue,17.25),perm(Strategy,[[play1]]))).
+  run((dt_solve(Strategy,ExpValue),close_to(ExpValue,17.25),perm(Strategy,[play1]))).
 :- end_tests(dt_winning).
 
 :- begin_tests(dt_umbrella, []).
 :- ensure_loaded(library(examples/dt_umbrella)).
 test(best_st_umbrella):-
-  run((dt_solve(Strategy,ExpValue),close_to(ExpValue,43),perm(Strategy,[[umbrella]]))).
+  run((dt_solve(Strategy,ExpValue),close_to(ExpValue,43),perm(Strategy,[umbrella]))).
 :- end_tests(dt_umbrella).
 
 :- begin_tests(dt_weather, []).
 :- ensure_loaded(library(examples/dt_weather)).
 test(best_st_weather):-
-  run((dt_solve(Strategy,ExpValue),close_to(ExpValue,77),perm(Strategy,[[decide_u(rainy)]]))).
+  run((dt_solve(Strategy,ExpValue),close_to(ExpValue,77),perm(Strategy,[decide_u(rainy)]))).
 :- end_tests(dt_weather).
 
 :- begin_tests(dt_viral, []).
@@ -94,7 +94,7 @@ test(best_st_weather):-
 test(best_st_viral):-
   ansi_format([bold,fg(cyan)], '~nThis test takes some time.~n',[]),
   % run((dt_solve(Strategy,ExpValue),close_to(ExpValue,2.217),perm(Strategy,[[marketed(theo)],[marketed(guy)]]))).
-  run((dt_solve(Strategy,ExpValue),close_to(ExpValue,3.21),perm(Strategy,[[marketed(theo)],[marketed(martijn)],[marketed(ingo)],[marketed(guy)]]))).
+  run((dt_solve(Strategy,ExpValue),close_to(ExpValue,3.21),perm(Strategy,[marketed(theo),marketed(martijn),marketed(ingo),marketed(guy)]))).
 :- end_tests(dt_viral).
 
 :- begin_tests(tabling_probs, []).
