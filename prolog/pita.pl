@@ -12,9 +12,10 @@
   map/3,
   set_pita/2,setting_pita/2,
   get_var_n/6,get_abd_var_n/6,
-  get_dec_var_n/5,
+  get_dec_var_n/6,
   load/1,load_file/1,
   dt_solve/2,
+  dt_solve_sp/2,
   parse/2,
   op(600,xfy,'::'),
   op(600,xfx,'=>'),
@@ -66,6 +67,7 @@ Reexports [cplint_util](https://friguzzi.github.io/cplint/pldoc/cplint_util.html
 :-meta_predicate setting_pita(:,-).
 :-meta_predicate set_sw(:,+).
 :-meta_predicate dt_solve(:,-).
+:-meta_predicate dt_solve_sp(:,-).
 
 % :- dynamic utility/2.
 
@@ -227,70 +229,121 @@ initialize_pita:-
   retractall(M:goal_n(_)),
   assert(M:rule_n(0)),
   assert(M:goal_n(0)),
-  (dynamic M:v/3, M:av/3,  %M:rule_by_num/4,
+  (dynamic M:v/3, M:av/3, M:rule_by_num/4, M:dec/3,  
     M:zero_clauses/1, M:pita_on/0, M:if_on/0, M:tabled/1),
   retractall(M:query_rule(_,_,_,_)).
+
 /**
- * dt_solve(-Strategy:list,-Cost:float) is det
+ * dt_solve(-Strategy:list,-OptExpUtility:float) is det
  *
  * The predicate computes the best solution for the decision theory
- * problem. It returns the best strategy in Strategy and it cost
- * in Cost. Complete solution without pruning.
+ * problem. It returns the best strategy in Strategy and its expected utility
+ * in OptExpUtility. Complete solution with pruning.
  */
 
-dt_solve(M:Strategy,Cost):-
+dt_solve_sp(M:Strategy,OptExpUtility):-
   must_be(var,Strategy),
-  must_be(var,Cost),
+  must_be(var,OptExpUtility),
   abolish_all_tables,
-  findall([H,U],M:'$util'(H,U),LUtils),
+  retractall(M:v(_,_,_)),
+  retractall(M:av(_,_,_)),
+  retractall(M:dec(_,_,_)),
   init(Env),
-  % statistics(walltime,[Start|_]),
-  generate_solution(Env,M,LUtils,[],St,Cost),
-  % statistics(walltime,[Stop|_]),
+  statistics(walltime,[Start|_]),
+  findall([U,BDD],
+          (
+            get_node_dt(M:utility(_,U),Env,Out),
+            Out=(_,BDD),
+            number(U)
+          ),
+          UtilBdds),
+  %write('UtilBdds: '), writeln(UtilBdds),
+  parse_bdds_and_utils(M,Env,UtilBdds,BddList,UtilList),
+  compute_optimal_strategy_sp(Env,BddList,UtilList,St_indexes,OptExpUtility),
+  %write('St_indexes: '), writeln(St_indexes),
+  statistics(walltime,[Stop|_]),
   end(Env),
-  % Runtime is Stop - Start,
-  % format('Runtime: ~w~n',[Runtime]),
-  maplist(pair(M),St,Strategy).
+  Runtime is Stop - Start,
+  format('Runtime: ~w~n',[Runtime]),
+  choices_to_strategy(M,St_indexes,Strategy).
 
-pair(M,A,B):- M:rule_by_num(A,B,_,_).
-split([A,B],A,B).
+/**
+ * dt_solve(-Strategy:list,-OptExpUtility:float) is det
+ *
+ * The predicate computes the best solution for the decision theory
+ * problem. It returns the best strategy in Strategy and its expected utility
+ * in OptExpUtility. Complete solution without pruning.
+ */
 
-get_bdd(_,_,[],L,L):- !.
-get_bdd(M,Env,[G|T],L,LO):-
-  get_node(M:G,Env,Out),
-  % writeln(Out),
-  Out=(_,BDD),
-  append(L,[BDD],LT),
-  get_bdd(M,Env,T,LT,LO).
+dt_solve(M:Strategy,OptExpUtility):-
+  must_be(var,Strategy),
+  must_be(var,OptExpUtility),
+  abolish_all_tables,
+  retractall(M:v(_,_,_)),
+  retractall(M:av(_,_,_)),
+  retractall(M:dec(_,_,_)),
+  init(Env),
+  statistics(walltime,[Start|_]),
+  findall([U,BDD],
+          (
+            get_node_dt(M:utility(_,U),Env,Out),
+            Out=(_,BDD),
+            number(U)
+          ),
+          UtilBdds),
+  %write('UtilBdds: '), writeln(UtilBdds),
+  generate_solution(Env,M,UtilBdds,[],St_indexes,OptExpUtility),
+  %write('St_indexes: '), writeln(St_indexes),
+  statistics(walltime,[Stop|_]),
+  end(Env),
+  Runtime is Stop - Start,
+  format('Runtime: ~w~n',[Runtime]),
+  choices_to_strategy(M,St_indexes,Strategy).
+
+choices_to_strategy(M, Choices, Strategy) :-
+  maplist(choice_head(M), Choices, NestedHeads),
+  append(NestedHeads, Strategy).
+
+choice_head(M, V-Val, HeadOut) :-
+  M:dec(R, S, V),
+  M:rule_by_num(R, Head0, _, VC),
+  copy_term((Head0, VC), (Heads, S)),
+  ( Heads = [H] ->
+      ( Val =:= 0 -> HeadOut = [H] 
+      ; Val =:= 1 -> HeadOut = []
+      ; throw(error(domain_error(decision_choice_index, V-Val), choice_head/3)) )
+  ; length(Heads, Len),
+    ( nth0(Val, Heads, H) ->
+        HeadOut = [H]
+    ; Val =:= Len ->
+        % Disjunctive decisions have an implicit null option at index Len.
+        HeadOut = []
+    ;
+        throw(error(domain_error(decision_choice_index, V-Val), choice_head/3))
+    )
+  ).
+
+parse_bdds_and_utils(_,_,[],[],[]):- !.
+parse_bdds_and_utils(M,Env,[[U,BDD]|Tail],[BDD|BDDTail],[U|UTail]):-
+  parse_bdds_and_utils(M,Env,Tail,BDDTail,UTail).
 
 % compute the solution for dt problem
 % generate_solution/6
-% generate_solution(Env,M,GoalCostList,CurrentAdd,Solution,Cost)
-% output Solution, Cost
-generate_solution(Env,_,[],Add,Solution,Cost):- !,
-  % create_dot(Env,Add,"final.dot"),
-  ret_strategy(Env,Add,Solution,Cost).
+% generate_solution(Env,M,GoalUtilityBDDList,CurrentAdd,Solution,OptExpUtility)
+% output SolutionIndex, OptExpUtility
+generate_solution(Env,_,[],Add,Solution,OptExpUtility):- !,
+  %create_dot(Env,Add,"final.dot"),
+  ret_strategy(Env,Add,Solution,OptExpUtility).
 
-generate_solution(Env,M,[[G,Cost]|TC],CurrentAdd,Solution,OptCost):-
-  get_node(M:G,Env,Out),
-  Out=(_,BDD),
+generate_solution(Env,M,[[U,BDD]|TC],CurrentAdd,Solution,OptExpUtility):-
   probability_dd(Env,BDD,AddConv),
-  add_prod(Env,AddConv,Cost,AddScaled),
+  add_prod(Env,AddConv,U,AddScaled),
   (CurrentAdd = [] ->
     AddOut = AddScaled ;
-    % writeln(CurrentAdd),
     add_sum(Env,CurrentAdd,AddScaled,AddOut)
-    % writeln("sum"),
   ),
-  generate_solution(Env,M,TC,AddOut,Solution,OptCost).
+  generate_solution(Env,M,TC,AddOut,Solution,OptExpUtility).
 
-/**
- * dt_evaluate_strategy(+Strategy:List,-Cost:float) is det
- *
- * Computes the cost of the selected strategy
- */
-% TODO
-% dt_evaluate_strategy(LS,Cost).
 
 /**
  * prob_meta(:Query:conjunction_of_literals,-Probability:float) is nondet
@@ -761,6 +814,24 @@ get_cond_p(M:Goal,M:Evidence,Env,P):-
       P is PGE/PE
   ).
 
+get_node_dt(M:Goal,Env,BDD):-
+  M:local_pita_setting(depth_bound,true),!,
+  M:local_pita_setting(depth,DB),
+  add_bdd_arg_db(Goal,Env,BDD,DB,M,Goal1),%DB=depth bound
+  (M:Goal1*->
+    true
+  ;
+    zeroc(Env,BDD)
+  ).
+
+get_node_dt(M:Goal,Env,BDD):- %with DB=false
+  add_bdd_arg(Goal,Env,BDD,M,Goal1),
+  (M:Goal1*->
+    true
+  ;
+    zeroc(Env,BDD)
+    %format("-------------------------Failed goal: ~w ~n",[M:Goal])
+  ).
 
 get_node(M:Goal,Env,BDD):-
   M:local_pita_setting(depth_bound,true),!,
@@ -787,10 +858,10 @@ get_node(M:Goal,Env,BDD):- %with DB=false
     % format("-------------------------Failed goal: ~w ~n",[M:Goal])
   ).
 
-  get_node_no_rec(M:Goal,Env,BDD):- %with DB=false
-  retractall(M:v(_,_,_)),
+get_node_no_rec(M:Goal,Env,BDD):- %with DB=false
   retractall(M:v(_,_,_)),
   retractall(M:av(_,_,_)),
+  retractall(M:dec(_,_,_)),
   add_bdd_arg(Goal,Env,BDD,M,Goal1),
   (M:Goal1*->
     true
@@ -901,27 +972,23 @@ get_var_n(M,Env,R,S,Probs0,V):-
   ).
 
 /**
- * get_dec_var_n(++M:atomic,++Environment:int,++Rule:int,++Substitution:term,-Variable:int) is det
+ * get_dec_var_n(++M:atomic,++Environment:int,++Rule:int,++Substitution:term,++Arity:int,-Variable:int) is det
  *
- * Returns the index Variable of the random variable associated to rule with
- * index Rule in environment Environment.
+ * Returns the index Variable of the decision variable associated to rule Rule
+ * in environment Env. Arity is the number of mutually exclusive decision heads.
  */
- get_dec_var_n(M,Env,R,S,V):-
-  % format('get_dec_var: R: ~w - S: ~w - V: ~w - M: ~w ~n', [R,S,V,M]),
+get_dec_var_n(M,Env,R,S,Arity,V):-
+  ( integer(Arity), Arity >= 2 ->
+      true
+  ;
+      throw(error('Decision arity must be an integer >= 2'))
+  ),
   ( M:dec(R,S,V) ->
-  % findall([A,B,C],M:dec(A,B,C),LD),
-    % writeln(LD),
-    true ;
-    add_decision_var(Env,R,V),
-    % writeln("New dec var"),
-    asserta(M:dec(R,S,V))
+      true
+  ;
+      add_decision_var(Env,R,Arity,V),
+      asserta(M:dec(R,S,V))
   ).
-  % (M:v(R,S,V)->
-  %     true
-  %   ;
-  %     % add_var(Env,1,R,V),
-  %     assert(M:v(R,S,V))
-  % ).
 
 /**
  * get_abd_var_n(++M:atomic,++Environment:int,++Rule:int,++Substitution:term,++Probabilities:list,-Variable:int) is det
@@ -1524,15 +1591,78 @@ pita_expansion(abducible(Head),[Clause,abd(R,S,H)]) :-
   ),
   Clause=(Head1:-(get_abd_var_n(M,Env,R,S,Probs,V),equalityc(Env,V,0,BDD))).
 
-% decision facts with body and ground variables
-% ?::a:- b.
-pita_expansion(Head:-Body,[Clause,rule_by_num(R,H,Body1,[]),TabDir]) :-
+decision_head_term((?) :: H, H).
+decision_head_term(decision(H), H).
+
+decision_terms_from_or((A ; B), Terms) :-
+  !,
+  decision_terms_from_or(A, TermsA),
+  decision_terms_from_or(B, TermsB),
+  append(TermsA, TermsB, Terms).
+decision_terms_from_or(Term, [Term]) :-
+  decision_head_term(Term, _).
+
+build_decision_rules([], _Idx, _K, _Env, _M, _R, _VC, _Body1, _BDDAnd, []).
+build_decision_rules([Head|Tail], Idx, K, Env, M, R, VC, Body1, BDDAnd, [Clause|Clauses]) :-
+  add_bdd_arg(Head,Env,BDDH,M,Head1),
+  Clause = (Head1:-(Body1,get_dec_var_n(M,Env,R,VC,K,V),equalityc(Env,V,Idx,B),andc(Env,BDDAnd,B,BDDH))),
+  Idx1 is Idx + 1,
+  build_decision_rules(Tail, Idx1, K, Env, M, R, VC, Body1, BDDAnd, Clauses).
+
+build_decision_facts([], _Idx, _K, _Env, _M, _R, _VC, []).
+build_decision_facts([Head|Tail], Idx, K, Env, M, R, VC, [Clause|Clauses]) :-
+  add_bdd_arg(Head,Env,BDD,M,Head1),
+  Clause = (Head1:-(get_dec_var_n(M,Env,R,VC,K,V),equalityc(Env,V,Idx,BDD))),
+  Idx1 is Idx + 1,
+  build_decision_facts(Tail, Idx1, K, Env, M, R, VC, Clauses).
+
+% decision disjunctive rules
+pita_expansion(Head:-Body,[rule_by_num(R,HeadList,BodyList,VC),TabDir|Clauses]) :-
   prolog_load_context(module, M),
   pita_input_mod(M),
   M:pita_on,
   ((Head:- Body) \= ((pita_expansion(_,_)) :- _ )),
   (Head \= ((pita_expansion(_,_)) :- _ )),
-  (Head = ((?) :: H) ; Head = decision(H)), ground(H), !,
+  decision_terms_from_or(Head, DecTerms),
+  maplist(decision_head_term, DecTerms, HeadList),
+  length(HeadList, K0),
+  K0 > 1, !,
+  K is K0 + 1,
+  list2and(BodyList, Body),
+  process_body(BodyList,BDD,BDDAnd,[],_Vars,BodyList1,Env,M),
+  append([onec(Env,BDD)],BodyList1,BodyList2),
+  list2and(BodyList2,Body1),
+  append(HeadList,BodyList,List),
+  term_variables(List,VC),
+  get_next_rule_number(M,R),
+  to_table(M,DecTerms,TabDir,HeadList1),
+  build_decision_rules(HeadList1,0,K,Env,M,R,VC,Body1,BDDAnd,Clauses).
+
+% decision disjunctive facts (must be ground)
+pita_expansion(Head,[rule_by_num(R,HeadList,[],VC),TabDir|Clauses]) :-
+  prolog_load_context(module, M),
+  pita_input_mod(M),
+  M:pita_on,
+  (Head \= ((pita_expansion(_,_)) :- _ )),
+  decision_terms_from_or(Head, DecTerms),
+  maplist(decision_head_term, DecTerms, HeadList),
+  length(HeadList, K0),
+  K0 > 1,
+  K is K0 + 1,
+  ( maplist(ground, HeadList) -> true ; throw(error("Expected grounded decision fact")) ), !,
+  term_variables(HeadList,VC),
+  get_next_rule_number(M,R),
+  to_table(M,DecTerms,TabDir,HeadList1),
+  build_decision_facts(HeadList1,0,K,_Env,M,R,VC,Clauses).
+
+% decision rules
+pita_expansion(Head:-Body,[Clause,rule_by_num(R,[H],BodyList,VC),TabDir]) :-
+  prolog_load_context(module, M),
+  pita_input_mod(M),
+  M:pita_on,
+  ((Head:- Body) \= ((pita_expansion(_,_)) :- _ )),
+  (Head \= ((pita_expansion(_,_)) :- _ )),
+  (Head = ((?) :: H) ; Head = decision(H)),!,
   list2and(BodyList, Body),
   process_body(BodyList,BDD,BDDAnd,[],_Vars,BodyList1,Env,M),
   append([onec(Env,BDD)],BodyList1,BodyList2),
@@ -1540,36 +1670,33 @@ pita_expansion(Head:-Body,[Clause,rule_by_num(R,H,Body1,[]),TabDir]) :-
   append([Head],BodyList,List),
   term_variables(List,VC),
   get_next_rule_number(M,R),
-  to_table(M,[Head],TabDir,HeadList1),
-  HeadList1 = [H1],
-  add_bdd_arg(H1,Env,BO,M,Head1),
-  Clause = (Head1:-(Body1,get_dec_var_n(M,Env,R,VC,V), equalityc(Env,V,0,B), andc(Env,BDDAnd,B,BO))).
+  to_table(M,[Head],TabDir,HeadList),
+  HeadList = [H1],
+  add_bdd_arg(H1,Env,BDDH,M,Head1),
+  Clause = (Head1:-(Body1,get_dec_var_n(M,Env,R,VC,2,V),equalityc(Env,V,0,B),andc(Env,BDDAnd,B,BDDH))).
 
-% decision facts without body and ground variables
-% ?::a.
+% decision facts (must be ground)
 pita_expansion(Head,[Clause,rule_by_num(R,[H],[],VC),TabDir]) :-
   prolog_load_context(module, M),
   pita_input_mod(M),
   M:pita_on,
   (Head \= ((pita_expansion(_,_)) :- _ )),
-  (Head = ((?) :: H) ; Head = decision(H)), ground(H), !,
-  term_variables([Head],VC), % VC is [] so maybe avoid the computation
+  (Head = ((?) :: H) ; Head = decision(H)),
+  ( ground(H) -> true ; throw(error("Expected a grounded decision fact"))),!,
+  term_variables([Head],VC),
   get_next_rule_number(M,R),
-  to_table(M,[Head],TabDir,HeadList1),
-  HeadList1 = [H1],
+  to_table(M,[Head],TabDir,HeadList),
+  HeadList = [H1],
   add_bdd_arg(H1,Env,BDD,M,Head1),
-  Clause = (Head1:-(get_dec_var_n(M,Env,R,VC,V),equalityc(Env,V,0,BDD))).
+  Clause = (Head1:-(get_dec_var_n(M,Env,R,VC,2,V),equalityc(Env,V,0,BDD))).
 
-% utility attributes with body
-% utility(a,N):- b.
-pita_expansion(Head:-Body,[Clause,TabDir,'$util'(H,U)]) :-
+% utility rules
+pita_expansion(Head:-Body,[Clause,rule_by_num(R,[Head],[H|BodyList],VC),TabDir]) :-
   prolog_load_context(module, M),
   pita_input_mod(M),
   M:pita_on,
-  (Head \= ((pita_expansion(_,_)) :- _ )),
-  (Head = (H => U) ; Head = utility(H,U)),
-  ( ground(H) -> true ; throw(error("Expected ground decision fact in utility/2"))),
-  ( number(U) -> true ; throw(error("Expected a number for utility in utility/2"))), !,
+  ((Head:- Body) \= ((pita_expansion(_,_)) :- _ )),
+  (Head = utility(H,_)),(H \= (\+ _)),!, % positive utility literal
   list2and(BodyList, Body),
   process_body(BodyList,BDD,BDDAnd,[],_Vars,BodyList1,Env,M),
   append([onec(Env,BDD)],BodyList1,BodyList2),
@@ -1577,21 +1704,61 @@ pita_expansion(Head:-Body,[Clause,TabDir,'$util'(H,U)]) :-
   append([Head],BodyList,List),
   term_variables(List,VC),
   get_next_rule_number(M,R),
-  to_table(M,[Head],TabDir,HeadList1),  % <---------------------- if HEAD = H => U does NOT WORKS
-  HeadList1 = [H1],
-  add_bdd_arg(H1,Env,BO,M,Head2),
-  Clause = (Head2:-(Body1,get_var_n(M,Env,R,VC,V),equalityc(Env,V,0,B),andc(Env,BDDAnd,B,BO))).
+  to_table(M,[Head],TabDir,HeadList),
+  HeadList = [H1],
+  add_bdd_arg(H1,Env,BDD1,M,Head1),
+  add_bdd_arg(H,Env,BDD2,M,Body2),
+  Clause = (Head1:-(Body1,Body2,andc(Env,BDDAnd,BDD2,BDD1))).
 
-% utility attributes without body
-% utility(a,N).
-pita_expansion(Head,'$util'(H,U)) :-
+pita_expansion(Head:-Body,[Clause,rule_by_num(R,[Head],[H|BodyList],VC),TabDir]) :-
+  prolog_load_context(module, M),
+  pita_input_mod(M),
+  M:pita_on,
+  ((Head:- Body) \= ((pita_expansion(_,_)) :- _ )),
+  (Head = utility(H,_)),(H = (\+ HP)),!, % negative utility literal
+  list2and(BodyList, Body),
+  process_body(BodyList,BDD,BDDAnd,[],_Vars,BodyList1,Env,M),
+  append([onec(Env,BDD)],BodyList1,BodyList2),
+  list2and(BodyList2,Body1),
+  append([Head],BodyList,List),
+  term_variables(List,VC),
+  get_next_rule_number(M,R),
+  to_table(M,[Head],TabDir,HeadList),
+  HeadList = [H1],
+  add_bdd_arg(H1,Env,BDD1,M,Head1),
+  add_bdd_arg(HP,Env,BDDH,M,Body2),
+  Clause = (Head1:-(Body1,Body2,bdd_notc(Env,BDDH,BDDN),andc(Env,BDDAnd,BDDN,BDD1))).
+
+% utility facts
+pita_expansion(Head,[Clause,rule_by_num(R,[Head],[H],VC),TabDir]) :-
   prolog_load_context(module, M),
   pita_input_mod(M),
   M:pita_on,
   (Head \= ((pita_expansion(_,_)) :- _ )),
-  (Head = (H => U) ; Head = utility(H,U)),
-  ( ground(H) -> true ; throw(error("Expected ground decision fact in utility/2"))),
-  ( number(U) -> true ; throw(error("Expected a number for utility in utility/2"))), !.
+  (Head = utility(H,_)),(H \= (\+ _)),!, % positive utility literal
+  term_variables([Head],VC),
+  get_next_rule_number(M,R),
+  to_table(M,[Head],TabDir,HeadList),
+  HeadList = [H1],
+  add_bdd_arg(H1,Env,BDD,M,Head1),
+  add_bdd_arg(H,Env,BDD,M,Body1),
+  Clause = (Head1:-(Body1)).
+
+pita_expansion(Head,[Clause,rule_by_num(R,[Head],[H],VC),TabDir]) :-
+  prolog_load_context(module, M),
+  pita_input_mod(M),
+  M:pita_on,
+  (Head \= ((pita_expansion(_,_)) :- _ )),
+  (Head = utility(H,_)),(H = (\+ HP)),!, % negative utility literal
+  term_variables([Head],VC),
+  get_next_rule_number(M,R),
+  to_table(M,[Head],TabDir,HeadList),
+  HeadList = [H1],
+  add_bdd_arg(H1,Env,BDD,M,Head1),
+  add_bdd_arg(HP,Env,BDDH,M,Body1),
+  Clause = (Head1:-(Body1,bdd_notc(Env,BDDH,BDD))).
+
+
 
 pita_expansion(Head:-Body,[rule_by_num(R,HeadList,BodyList,VC1)|Clauses]) :-
   prolog_load_context(module, M),pita_input_mod(M),M:pita_on,
@@ -2096,6 +2263,7 @@ sandbox:safe_meta(pita:msw(_,_,_,_,_), []).
 sandbox:safe_meta(pita:set_pita(_,_),[]).
 sandbox:safe_meta(pita:setting_pita(_,_),[]).
 sandbox:safe_meta(pita:dt_solve(_,_),[]).
+sandbox:safe_meta(pita:dt_solve_sp(_,_),[]).
 
 
 
