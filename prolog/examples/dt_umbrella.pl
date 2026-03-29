@@ -19,10 +19,10 @@ dry :- rain, umbrella, \+(broken_umbrella).
 dry :- \+(rain).
 
 % utility facts
-broken_umbrella => -40.
-raincoat => -20.
-umbrella => -2.
-dry => 60.
+utility(broken_umbrella,-40).
+utility(raincoat,-20).
+utility(umbrella,-2).
+utility(dry,60).
 
 :- end_lpad.
 
